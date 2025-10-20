@@ -2,19 +2,75 @@ const express = require("express");
 const app = express();
 const connectDB = require("./config/database");
 const User = require("./models/userModel");
+const { validateSignUp } = require("./utils/ValidateSignUp");
+const bcrypt = require("bcrypt");
+const validator = require("validator");
+const cookieParser = require("cookie-parser");
+const jwt = require("jsonwebtoken");
+const userAuth = require("./middlewares/userAuth");
 
 app.use(express.json());
+app.use(cookieParser());
 connectDB();
 
 //signup
 app.post("/signup", async (req, res) => {
   try {
-    const user = new User(req.body);
+    validateSignUp(req);
+
+    const { firstName, lastName, emailId, password } = req.body;
+
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    const user = new User({
+      firstName,
+      lastName,
+      emailId,
+      password: passwordHash,
+    });
     await user.save();
     res.json({
       message: "User updated successfully",
       data: user,
     });
+  } catch (error) {
+    res.send({ message: error.message });
+  }
+});
+
+//login
+app.post("/login", async (req, res) => {
+  try {
+    const { emailId, password } = req.body;
+    if (!validator.isEmail(emailId)) {
+      throw new Error("Please enter a valid email address");
+    }
+
+    const user = await User.findOne({ emailId });
+    if (!user) {
+      throw new Error("Invalid credentials");
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (isPasswordValid) {
+      //create jwt token
+
+      const token = await jwt.sign({ _id: user._id }, "HEHHhsa12hsh");
+
+      res.cookie("token", token);
+      res.send("Login successfull");
+    } else {
+      res.send("Invalid credentials");
+    }
+  } catch (error) {
+    res.send({ message: error.message });
+  }
+});
+
+app.get("/profile", userAuth, async (req, res) => {
+  try {
+    const user = req.user;
+    res.send(user);
   } catch (error) {
     res.send({ message: error.message });
   }
